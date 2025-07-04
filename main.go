@@ -136,6 +136,7 @@ func (w *Watcher) startApp() error {
 	if w.process != nil && w.process.Process != nil {
 		log.Println("Stopping previous app process...")
 		_ = w.process.Process.Kill()
+		time.Sleep(2 * time.Second)
 		w.process = nil
 	}
 
