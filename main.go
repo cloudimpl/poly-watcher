@@ -64,31 +64,35 @@ func (w *Watcher) hashDir() (uint64, bool, error) {
 
 	err := filepath.Walk(w.dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			log.Printf("Error accessing %s: %v", path, err)
+			return nil
 		}
+		if info == nil {
+			log.Printf("No info for %s", path)
+			return nil
+		}
+
 		relPath, _ := filepath.Rel(w.dir, path)
 
 		if info.IsDir() {
-			if info.Name()[0] == '.' {
-				return filepath.SkipDir
-			}
-			if !w.shouldProcess(relPath) {
+			// Skip hidden subdirs, but not root
+			if info.Name() != "." && info.Name()[0] == '.' {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if info.Name()[0] == '.' {
-			return nil
-		}
+		// Apply file excludes
 		if !w.shouldProcess(relPath) {
 			return nil
 		}
 
+		// Include in hash
 		h.Write([]byte(relPath))
 		h.Write([]byte(fmt.Sprintf("%d", info.Size())))
 		h.Write([]byte(info.ModTime().String()))
 
+		// Check dep file change
 		if w.depFile != "" && filepath.Base(path) == filepath.Base(w.depFile) {
 			if info.ModTime() != w.prevDepMTime {
 				depChanged = true
@@ -121,7 +125,6 @@ func (w *Watcher) runBuild(depChanged bool) error {
 			return err
 		}
 	}
-
 	log.Println("Running build command...")
 	return w.runShell(w.buildCmd)
 }
@@ -185,16 +188,15 @@ func (w *Watcher) Run() {
 }
 
 func printBanner() {
-	fmt.Println("🚀 Poly Watcher — The universal build-run watcher for your projects. Change it. Build it. Run it. Repeat.")
+	fmt.Println("🚀 poly-watcher — The universal build-run watcher for your projects. Change it. Build it. Run it. Repeat.")
 	fmt.Println("Example:")
-	fmt.Println(`  poly-watcher --depfile=go.mod --depcommand="go mod tidy && go mod download" --build="go build -o myapp ." --run="./myapp" --include=.go --exclude=.git,.polycode`)
+	fmt.Println(`  poly-watcher --root=./myapp --depfile=go.mod --depcommand="go mod tidy && go mod download" --build="go build -o myapp ." --run="./myapp" --include=.go --exclude=.git,.polycode`)
 	fmt.Println()
 }
 
 func main() {
 	printBanner()
 
-	dir := flag.String("dir", ".", "Working directory to watch")
 	buildCmd := flag.String("build", "echo 'No build command specified'", "Build command to run on change")
 	runCmd := flag.String("run", "echo 'No run command specified'", "Run command to execute built app")
 	depFile := flag.String("depfile", "", "Dependency file to monitor for changes (e.g. go.mod, package.json)")
@@ -214,11 +216,7 @@ func main() {
 		excludes = strings.Split(*excludeDirs, ",")
 	}
 
-	if err := os.Chdir(*dir); err != nil {
-		log.Fatalf("Failed to change directory: %v", err)
-	}
-
 	watcher := NewWatcher(".", *interval, *buildCmd, *runCmd, *depFile, *depCmd, includes, excludes)
-	log.Println("Starting watcher...")
+	log.Println("Starting poly-watcher...")
 	watcher.Run()
 }
